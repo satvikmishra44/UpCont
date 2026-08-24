@@ -1,0 +1,7 @@
+node_modules/
+dist/
+.env
+.data/
+videos-approved/*
+!videos-approved/.gitkeep
+*.log
