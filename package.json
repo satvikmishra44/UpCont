@@ -1,17 +1,39 @@
 {
-  "name": "week-32---upcont",
+  "name": "upcont",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
-  },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "description": "MCP Server for AI agents to upload videos to all platforms at once",
   "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "tsx src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "ai",
+    "ai-agents",
+    "video",
+    "video-upload",
+    "youtube",
+    "instagram",
+    "facebook",
+    "tiktok"
+  ],
+  "author": "Satvik Mishra",
+  "license": "ISC",
+  "engines": {
+    "node": ">=20"
+  },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.30.0",
+    "@modelcontextprotocol/server": "^2.1.0",
     "dotenv": "^17.4.2",
     "pino": "^10.3.1",
     "zod": "^4.4.3"
