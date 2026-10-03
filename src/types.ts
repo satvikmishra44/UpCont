@@ -1,64 +1,85 @@
-export type PlatformName = "youtube" | "facebook" | "instagram";
+export const PLATFORM_NAMES = [
+  "youtube",
+  "facebook",
+  "instagram",
+] as const;
+
+export type PlatformName = (typeof PLATFORM_NAMES)[number];
+
+export type PrivacyStatus = "private" | "unlisted" | "public";
 
 export type ConnectionState =
-  | "configured"
-  | "not_configured"
+  | "unconfigured"
+  | "disconnected"
+  | "authorizing"
   | "authorized"
-  | "expired"
   | "error";
-
-export interface PlatformValidationResult {
-  platform: PlatformName;
-  ok: boolean;
-  warnings: string[];
-}
-
-export interface SafeVideoReference {
-  fileName: string;
-  absolutePath: string;
-  sizeBytes: number;
-  mimeType: string | null;
-}
-
-export interface ValidateVideoResult {
-  video: SafeVideoReference;
-  perPlatform: PlatformValidationResult[];
-}
 
 export interface ConnectionStatus {
   platform: PlatformName;
   state: ConnectionState;
-  account?: { displayName: string; id: string };
-  missingConfig: string[];
-  nextStep: string;
+  displayName?: string;
+  details?: string;
 }
 
 export interface PublishTarget {
   platform: PlatformName;
   id: string;
   displayName: string;
+  targetType: "channel" | "page" | "account";
+}
+
+export interface ValidatedVideo {
+  fileName: string;
+  absolutePath: string;
+  sizeBytes: number;
+  mimeType: string;
+}
+
+export interface PlatformVideoValidation {
+  platform: PlatformName;
+  ok: boolean;
+  warnings: string[];
+  errors: string[];
+}
+
+export interface ValidateVideoResult {
+  ok: boolean;
+  video: ValidatedVideo;
+  perPlatform: PlatformVideoValidation[];
 }
 
 export interface PublishRequest {
-  video: SafeVideoReference;
+  video: ValidatedVideo;
   title: string;
   description: string;
-  privacyStatus?: "private" | "unlisted" | "public" | undefined;
-  targetId?: string | undefined;
+  privacyStatus: PrivacyStatus;
+  targetId?: string;
+  tags: string[];
+  categoryId: string;
+  madeForKids: boolean;
+  notifySubscribers: boolean;
 }
 
-export type PublishOutcomeStatus = "success" | "failed" | "dry_run";
+export interface PublishRequestValidation {
+  ok: boolean;
+  reasons: string[];
+  warnings: string[];
+}
+
+export type PlatformPublishStatus = "dry_run" | "success" | "failed";
 
 export interface PlatformPublishResult {
   platform: PlatformName;
-  status: PublishOutcomeStatus;
-  remoteId?: string;
-  url?: string;
+  status: PlatformPublishStatus;
+  externalId?: string;
+  externalUrl?: string;
   errorCategory?: string;
   errorMessage?: string;
+  message?: string;
 }
 
 export interface PublishVideoResult {
-  overallStatus: "success" | "partial_success" | "failed" | "dry_run";
+  overallStatus: "dry_run" | "success" | "partial_success" | "failed";
   results: PlatformPublishResult[];
 }
