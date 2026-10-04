@@ -1,14 +1,13 @@
-import type { ConnectionStatus, PlatformName, PlatformPublishResult, PublishRequest, PublishTarget } from "../types.js";
+import type { ConnectionStatus, PlatformName, PlatformPublishResult, PublishRequest, PublishRequestValidation, PublishTarget } from "../types.js"
 
-export interface PublishValidation {
-  ok: boolean;
-  reasons: string[];
-}
-
-export interface PlatformPublisher {
+export interface PlatformPublisher{
   readonly platform: PlatformName;
-  getConnectionStatus(): Promise<ConnectionStatus>;
-  listTargets(): Promise<PublishTarget[]>;
-  validatePublishRequest(request: PublishRequest): Promise<PublishValidation>;
-  publish(request: PublishRequest, dryRun: boolean): Promise<PlatformPublishResult>;
+
+  getConnectionStatus() : Promise<ConnectionStatus>;
+
+  listTargets() : Promise<PublishTarget[]>;
+
+  validatePublishRequest(request: PublishRequest) : Promise<PublishRequestValidation>;
+
+  publish(request: PublishRequest) : Promise<PlatformPublishResult>;
 }
