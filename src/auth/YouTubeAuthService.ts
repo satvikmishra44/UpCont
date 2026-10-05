@@ -43,8 +43,8 @@ export function buildYouTubeAuthorizationUrl(client: OAuth2Client, state: string
 
 export class YouTubeAuthService implements YouTubeAuthPort {
     private readonly tokenStore: YouTubeTokenStore;
-    private pending?: PendingAuthorization;
-    private lastError?: string;
+    private pending: PendingAuthorization | undefined;
+    private lastError: string | undefined;
 
     constructor(private readonly config: YouTubeConfig){
         this.tokenStore = new YouTubeTokenStore(config.tokenPath);
@@ -55,7 +55,7 @@ export class YouTubeAuthService implements YouTubeAuthPort {
         return Boolean(this.config.clientId && this.config.clientSecret);
     }
 
-    private assertConfgured(): void {
+    private assertConfigured(): void {
         if(!this.isConfigured()){
             throw new Error("YouTube OAuth is not configured. Please provide clientId and clientSecret in the configuration.");
         }
@@ -78,12 +78,19 @@ export class YouTubeAuthService implements YouTubeAuthPort {
     }
 
     private createOAuthClient(): OAuth2Client {
-        this.assertConfgured();
-        return new OAuth2Client({clientId: this.config.clientId, clientSecret: this.config.clientSecret, redirectUri: this.config.redirectUri});
+        this.assertConfigured();
+        const clientId = this.config.clientId;
+        const clientSecret = this.config.clientSecret;
+        const redirectUri = this.config.redirectUri;
+
+        if(!clientId || !clientSecret){
+            throw new Error("YouTube OAuth is not configured. Please provide clientId and clientSecret in the configuration.")
+        }
+        return new OAuth2Client({clientId, clientSecret, redirectUri});
     }
 
     async startAuthorization(): Promise<YouTubeAuthorizationStart>{
-        this.assertConfgured();
+        this.assertConfigured();
 
         if(this.pending){
             throw new Error("Authorization is already in progress")
@@ -185,7 +192,13 @@ export class YouTubeAuthService implements YouTubeAuthPort {
             const { tokens } = await oauthClient.getToken(code);
             const existing = await this.tokenStore.load();
 
-            const merged: Credentials = {...existing, ...tokens, refresh_token: tokens.refresh_token ?? existing?.refresh_token ?? undefined};
+            const merged: Credentials = {...(existing ?? {}), ...tokens};
+
+            const refreshToken = tokens.refresh_token ?? existing?.refresh_token;
+
+            if(refreshToken !== undefined){
+                merged.refresh_token = refreshToken;
+            }
 
             await this.tokenStore.save(merged);
             this.lastError = undefined;
