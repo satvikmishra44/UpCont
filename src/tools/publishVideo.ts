@@ -1,23 +1,72 @@
-import { z } from "zod";
-import type { AppConfig } from "../config/env.js";
+import * as z from "zod/v4";
+
 import type { PlatformPublisher } from "../adapters/PlatformPublisher.js";
-import { validateVideoFile, VideoValidationError } from "../video/validateVideoFile.js";
-import type { PlatformName, PlatformPublishResult, PublishRequest, PublishVideoResult } from "../types.js";
+import type { AppConfig } from "../config/env.js";
+import type {
+  PlatformName,
+  PlatformPublishResult,
+  PublishRequest,
+  PublishVideoResult,
+} from "../types.js";
+import {
+  validateVideoFile,
+  VideoValidationError,
+} from "../video/validateVideoFile.js";
 
 export const PublishVideoInputSchema = z.object({
   fileName: z.string().min(1),
-  platforms: z.array(z.enum(["youtube", "facebook", "instagram"])).min(1),
-  targetIds: z.record(z.string(), z.string()).optional().default({}),
-  title: z.string().min(1),
-  description: z.string().default(""),
-  privacyStatus: z.enum(["private", "unlisted", "public"]).optional().default("private"),
-  dryRun: z.boolean().optional().default(true),
-  confirmPublish: z.boolean().optional().default(false),
+
+  platforms: z
+    .array(
+      z.enum([
+        "youtube",
+        "facebook",
+        "instagram",
+      ]),
+    )
+    .min(1),
+
+  targetIds: z
+    .record(z.string(), z.string())
+    .optional()
+    .default({}),
+
+  title: z.string().min(1).max(100),
+
+  description: z
+    .string()
+    .max(5000)
+    .default(""),
+
+  privacyStatus: z
+    .enum(["private", "unlisted", "public"])
+    .default("private"),
+
+  tags: z
+    .array(z.string().min(1))
+    .max(30)
+    .default([]),
+
+  categoryId: z.string().default("22"),
+
+  madeForKids: z.boolean(),
+
+  notifySubscribers: z
+    .boolean()
+    .default(false),
+
+  dryRun: z.boolean().default(true),
+
+  confirmPublish: z
+    .boolean()
+    .default(false),
 });
 
-export type PublishVideoInput = z.infer<typeof PublishVideoInputSchema>;
+export type PublishVideoInput = z.infer<
+  typeof PublishVideoInputSchema
+>;
 
-function getOverallStatus(
+function determineOverallStatus(
   results: PlatformPublishResult[],
   dryRun: boolean,
 ): PublishVideoResult["overallStatus"] {
@@ -25,10 +74,15 @@ function getOverallStatus(
     return "dry_run";
   }
 
-  const successCount = results.filter((result) => result.status === "success").length;
-  const failedCount = results.filter((result) => result.status === "failed").length;
+  const successCount = results.filter(
+    (result) => result.status === "success",
+  ).length;
 
-  if (failedCount === 0) {
+  const failureCount = results.filter(
+    (result) => result.status === "failed",
+  ).length;
+
+  if (failureCount === 0) {
     return "success";
   }
 
@@ -42,27 +96,40 @@ function getOverallStatus(
 export async function publishVideo(
   input: PublishVideoInput,
   config: AppConfig,
-  publishers: Record<PlatformName, PlatformPublisher>,
+  publishers: Record<
+    PlatformName,
+    PlatformPublisher
+  >,
 ): Promise<PublishVideoResult> {
   if (!input.dryRun && !input.confirmPublish) {
     throw new Error(
-      "Refusing real publish because dryRun is false but confirmPublish is not true.",
+      "Real publishing requires confirmPublish=true.",
     );
   }
 
   let validatedVideo;
+
   try {
     validatedVideo = await validateVideoFile({
       fileName: input.fileName,
       platforms: input.platforms,
-      videoUploadRoot: config.videoUploadRoot,
-      maxVideoSizeBytes: config.maxVideoSizeMb * 1024 * 1024,
+      videoUploadRoot:
+        config.videoUploadRoot,
+      maxVideoSizeBytes:
+        config.maxVideoSizeMb *
+        1024 *
+        1024,
     });
   } catch (error) {
-    if (error instanceof VideoValidationError) {
+    if (
+      error instanceof VideoValidationError
+    ) {
       throw error;
     }
-    throw new Error("Unexpected error during local video validation.");
+
+    throw new Error(
+      "Unexpected local video validation failure.",
+    );
   }
 
   const results: PlatformPublishResult[] = [];
@@ -70,53 +137,92 @@ export async function publishVideo(
   for (const platform of input.platforms) {
     const publisher = publishers[platform];
 
+    const targetId = input.targetIds[platform];
+
+    if (!targetId) {
+      results.push({
+        platform,
+        status: "failed",
+        errorCategory: "invalid_request",
+        errorMessage: `No target ID provided for platform "${platform}".`,
+      });
+
+      continue;
+    }
+
     const request: PublishRequest = {
       video: validatedVideo.video,
       title: input.title,
       description: input.description,
       privacyStatus: input.privacyStatus,
-      targetId: input.targetIds[platform],
+      targetId,
+      tags: input.tags,
+      categoryId: input.categoryId,
+      madeForKids: input.madeForKids,
+      notifySubscribers: input.notifySubscribers,
     };
 
     try {
-      const connectionStatus = await publisher.getConnectionStatus();
+      const connection =
+        await publisher.getConnectionStatus();
 
-      if (!input.dryRun && connectionStatus.state !== "authorized") {
+      if (
+        !input.dryRun &&
+        connection.state !== "authorized"
+      ) {
         results.push({
           platform,
           status: "failed",
-          errorCategory: "not_authorized",
-          errorMessage: `Platform "${platform}" is not authorized.`,
+          errorCategory:
+            "not_authorized",
+          errorMessage:
+            `${platform} is not authorized.`,
         });
+
         continue;
       }
 
-      const validation = await publisher.validatePublishRequest(request);
+      const platformValidation =
+        await publisher.validatePublishRequest(
+          request,
+        );
 
-      if (!input.dryRun && !validation.ok) {
+      if (!platformValidation.ok) {
         results.push({
           platform,
           status: "failed",
-          errorCategory: "invalid_request",
-          errorMessage: validation.reasons.join("; "),
+          errorCategory:
+            "invalid_request",
+          errorMessage:
+            platformValidation.reasons.join(
+              "; ",
+            ),
         });
+
         continue;
       }
 
-      const publishResult = await publisher.publish(request, input.dryRun);
-      results.push(publishResult);
+      const result = await publisher.publish(request);
+
+      results.push(result);
     } catch {
       results.push({
         platform,
         status: "failed",
-        errorCategory: "unexpected_error",
-        errorMessage: "Unexpected platform error.",
+        errorCategory:
+          "unexpected_error",
+        errorMessage:
+          `Unexpected ${platform} publishing error.`,
       });
     }
   }
 
   return {
-    overallStatus: getOverallStatus(results, input.dryRun),
+    overallStatus:
+      determineOverallStatus(
+        results,
+        input.dryRun,
+      ),
     results,
   };
 }
