@@ -69,15 +69,9 @@ export class YouTubePublisher implements PlatformPublisher {
 
         const youtube = this.createYTApi(auth);
 
-        const response = await youtube.channels.list({part: ["id", "snippet"], mine: true, maxresults: 50});
+        const response = await youtube.channels.list({part: ["id", "snippet"], mine: true, maxResults: 50});
 
-        return (response.data.items ?? []).filter(
-            (
-            channel,
-            ): channel is youtube_v3.Schema$Channel & {
-            id: string;
-            } => Boolean(channel.id),
-        )
+        return (response.data.items ?? []).filter((channel): channel is youtube_v3.Schema$Channel & {id: string} => Boolean(channel.id))
         .map((channel) => ({
             platform: "youtube" as const,
             id: channel.id,
@@ -88,74 +82,49 @@ export class YouTubePublisher implements PlatformPublisher {
         }));
     }
 
-    async validatePublishRequest(
-    request: PublishRequest,
-  ): Promise<PublishRequestValidation> {
-    const reasons: string[] = [];
-    const warnings: string[] = [];
+    async validatePublishRequest(request: PublishRequest): Promise<PublishRequestValidation> {
+        const reasons: string[] = [];
+        const warnings: string[] = [];
 
-    const trimmedTitle = request.title.trim();
+        const trimmedTitle = request.title.trim();
 
-    if (!trimmedTitle) {
-      reasons.push("YouTube title is required.");
-    }
+        if (!trimmedTitle) {
+            reasons.push("YouTube title is required.");
+        }
 
-    if (trimmedTitle.length > 100) {
-      reasons.push(
-        "YouTube title cannot exceed 100 characters.",
-      );
-    }
+        if (trimmedTitle.length > 100) {
+            reasons.push("YouTube title cannot exceed 100 characters.");
+        }
 
-    if (request.description.length > 5000) {
-      reasons.push(
-        "YouTube description cannot exceed 5000 characters.",
-      );
-    }
+        if (request.description.length > 5000) {
+            reasons.push("YouTube description cannot exceed 5000 characters.");
+        }
 
-    if (
-      !["private", "unlisted", "public"].includes(
-        request.privacyStatus,
-      )
-    ) {
-      reasons.push(
-        "YouTube privacy must be private, unlisted, or public.",
-      );
-    }
+        if (!["private", "unlisted", "public"].includes(request.privacyStatus)) {
+            reasons.push("YouTube privacy must be private, unlisted, or public.");
+        }
 
-    if (!request.categoryId.trim()) {
-      reasons.push(
-        "YouTube categoryId cannot be empty.",
-      );
-    }
+        if (!request.categoryId.trim()) {
+            reasons.push("YouTube categoryId cannot be empty.");
+        }
 
-    if (request.tags.some((tag) => !tag.trim())) {
-      reasons.push(
-        "YouTube tags cannot contain empty values.",
-      );
-    }
+        if (request.tags.some((tag) => !tag.trim())) {
+            reasons.push("YouTube tags cannot contain empty values.");
+        }
 
-    if (request.privacyStatus !== "private") {
-      warnings.push(
-        "This upload may become visible to other people. Use private for the first real integration test.",
-      );
-    }
+        if (request.privacyStatus !== "private") {
+            warnings.push("This upload may become visible to other people. Use private for the first real integration test.");
+        }
 
-    if (request.notifySubscribers) {
-      warnings.push(
-        "YouTube subscriber notifications are enabled.",
-      );
-    }
+        if (request.notifySubscribers) {
+            warnings.push("YouTube subscriber notifications are enabled.");
+        }
 
-    return {
-      ok: reasons.length === 0,
-      reasons,
-      warnings,
-    };
+        return {ok: reasons.length === 0, reasons, warnings};
   }
 
-  async publish(request: PublishRequest, dryRun: boolean): Promise<PlatformPublishResult> {
-    const validation =
-      await this.validatePublishRequest(request);
+  async publish(request: PublishRequest, dryRun=false): Promise<PlatformPublishResult> {
+    const validation = await this.validatePublishRequest(request);
 
     if (!validation.ok) {
       return {
@@ -177,16 +146,13 @@ export class YouTubePublisher implements PlatformPublisher {
     }
 
     try {
-      const auth =
-        await this.authService.getAuthorizedClient();
+      const auth = await this.authService.getAuthorizedClient();
 
       const youtube = this.createYTApi(auth);
 
       if (request.targetId) {
         const targets = await this.listTargets();
-        const connectedTarget = targets.find(
-          (target) => target.id === request.targetId,
-        );
+        const connectedTarget = targets.find((target) => target.id === request.targetId);
 
         if (!connectedTarget) {
           return {
@@ -264,6 +230,4 @@ export class YouTubePublisher implements PlatformPublisher {
       };
     }
   }
-
-
 }
