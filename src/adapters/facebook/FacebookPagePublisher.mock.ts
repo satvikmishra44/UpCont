@@ -1,27 +1,32 @@
-import type { PlatformPublisher, PublishValidation } from "../PlatformPublisher.js";
-import type { ConnectionStatus, PlatformPublishResult, PublishRequest, PublishTarget } from "../../types.js";
+import type { PlatformPublisher } from "../PlatformPublisher.js";
+import type { ConnectionStatus, PlatformPublishResult, PublishRequest, PublishRequestValidation, PublishTarget } from "../../types.js";
 import type { MockBehaviorOptions } from "../youtube/YouTubePublisher.mock.js";
 
 export class FacebookPagePublisherMock implements PlatformPublisher {
   readonly platform = "facebook" as const;
+
   constructor(private readonly behavior: MockBehaviorOptions = {}) {}
 
   async getConnectionStatus(): Promise<ConnectionStatus> {
-    return { platform: "facebook", state: "authorized", account: { displayName: "Mock Facebook Page", id: "mock-page-id" }, missingConfig: [], nextStep: "Mock mode is active." };
+    return { platform: "facebook", state: "authorized", displayName: "Mock Facebook Page", details: "Mock mode is active." };
   }
+
   async listTargets(): Promise<PublishTarget[]> {
-    return [{ platform: "facebook", id: "mock-page-id", displayName: "Mock Facebook Page" }];
+    return [{ platform: "facebook", id: "mock-page-id", displayName: "Mock Facebook Page", targetType: "page" }];
   }
-  async validatePublishRequest(request: PublishRequest): Promise<PublishValidation> {
+
+  async validatePublishRequest(request: PublishRequest): Promise<PublishRequestValidation> {
     const reasons: string[] = [];
+    if (!request.title.trim()) reasons.push("Title is required.");
     if (!request.targetId) reasons.push("Facebook Page target ID is required.");
-    return { ok: reasons.length === 0, reasons };
+    return { ok: reasons.length === 0, reasons, warnings: [] };
   }
-  async publish(request: PublishRequest, dryRun: boolean): Promise<PlatformPublishResult> {
-    if (dryRun) return { platform: "facebook", status: "dry_run" };
+
+  async publish(request: PublishRequest): Promise<PlatformPublishResult> {
     if (this.behavior.simulateFailure) {
-      return { platform: "facebook", status: "failed", errorCategory: "simulated_failure", errorMessage: "Configured to fail." };
+      return { platform: this.platform, status: "failed", errorCategory: "simulated_failure", errorMessage: "Configured to fail." };
     }
-    return { platform: "facebook", status: "success", remoteId: "mock-fb-id", url: "https://facebook.com/mock-page/videos/mock-fb-id" };
+
+    return { platform: this.platform, status: "success", externalId: "mock-fb-id", externalUrl: "https://facebook.com/mock-page/videos/mock-fb-id" };
   }
 }
