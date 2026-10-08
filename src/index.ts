@@ -111,4 +111,15 @@ function createServer() : McpServer {
   const shutdown = () => {
     youtubeAuth.dispose();
   }
+
+  process.once("SIGINT", shutdown);
+  process.once("SIGTERM", shutdown);
+
+  logger.info({version: VERSION, youtubeMode: config.youtube.mode}, "UpCont MCP Server Configured");
+
+  return server;
 }
+
+void serveStdio(createServer);
+
+console.error("UpCont MCP server running over stdio")
