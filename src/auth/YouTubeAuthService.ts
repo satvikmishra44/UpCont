@@ -96,6 +96,8 @@ export class YouTubeAuthService implements YouTubeAuthPort {
             throw new Error("Authorization is already in progress")
         }
 
+        this.lastError = undefined;
+
         const redirect = new URL(this.config.redirectUri);
         const state = randomBytes(32).toString("hex");
         const expiresAt = Date.now() + AUTHORIZATION_TIMEOUT_MS;
@@ -190,6 +192,19 @@ export class YouTubeAuthService implements YouTubeAuthPort {
 
         try {
             const { tokens } = await oauthClient.getToken(code);
+            
+            const grantedScopes = (tokens.scope ?? "").split(" ");
+            const missingScopes = YOUTUBE_OAUTH_SCOPES.filter((scope) => !grantedScopes.includes(scope));
+
+            if (missingScopes.length > 0) {
+                this.lastError = "Required YouTube permissions were not granted. Tick every permission on the Google consent screen and reconnect.";
+
+                response.writeHead(400, {"Content-Type": "text/plain; charset=utf-8"});
+                response.end("Required permissions were not granted. Return to your MCP client and try again.");
+                return;
+            }
+
+            
             const existing = await this.tokenStore.load();
 
             const merged: Credentials = {...(existing ?? {}), ...tokens};

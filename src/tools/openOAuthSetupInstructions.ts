@@ -29,9 +29,11 @@ const GUIDES: Record<string, OAuthSetupGuide> = {
       "Complete local authorization flow in Milestone 2.",
     ],
     requiredEnvVars: [
+      "YOUTUBE_MODE",
       "YOUTUBE_CLIENT_ID",
       "YOUTUBE_CLIENT_SECRET",
-      "YOUTUBE_OAUTH_REDIRECT_URI",
+      "YOUTUBE_REDIRECT_URI",
+      "YOUTUBE_TOKEN_PATH",
     ],
     oauthFlowSummary:
       "Authorization Code flow using a local browser and a local callback helper.",

@@ -56,23 +56,26 @@ async function resolveSafePath(fileName: string, videoUploadRoot: string): Promi
 
   const stat = await fs.stat(realCandidate);
 
+  if (!stat.isFile()) {
+    throw new VideoValidationError(`Not a regular file: ${fileName}`);
+  }
+  
   return realCandidate;
 }
 
-function platformWarnings(platform: PlatformName, ext: string, sizeBytes: number): PlatformValidationResult {
-  const warnings: string[] = [];
-  const sizeMb = sizeBytes / (1024 * 1024);
+function platformChecks(platform: PlatformName, extension: string): PlatformVideoValidation{
+  const warnings : string[] = [];
+  const errors: string[] = [];
 
-  if (platform === "instagram" && ext !== ".mp4" && ext !== ".mov") {
-    warnings.push("Instagram prefers MP4/MOV containers.");
-  }
-  if (platform === "youtube" && sizeMb > 128000) {
-    warnings.push("Exceeds YouTube's general size guidance.");
-  }
   if (platform === "instagram") {
+    if (extension !== ".mp4" && extension !== ".mov") {
+      warnings.push("Instagram prefers MP4 or MOV containers.");
+    }
+
     warnings.push("Instagram's API generally requires a public HTTPS URL, not a local file.");
   }
-  return { platform, ok: true, warnings };
+
+  return { platform, ok: errors.length === 0, warnings, errors };
 }
 
 export interface ValidateVideoInput {
@@ -82,7 +85,7 @@ export interface ValidateVideoInput {
   maxVideoSizeBytes: number;
 }
 
-export async function validateVideoFile(input: ValidateVideoInput) {
+export async function validateVideoFile(input: ValidateVideoInput) : Promise<ValidateVideoResult> {
   const { fileName, platforms, videoUploadRoot, maxVideoSizeBytes } = input;
   const ext = path.extname(fileName).toLowerCase();
 
@@ -97,12 +100,17 @@ export async function validateVideoFile(input: ValidateVideoInput) {
     throw new VideoValidationError(`File exceeds configured size limit.`);
   }
 
-  const video: SafeVideoReference = {
+  if(stat.size === 0){
+    throw new VideoValidationError("File is empty");
+  }
+
+  const video: ValidatedVideo = {
     fileName,
     absolutePath,
     sizeBytes: stat.size,
-    mimeType: EXTENSION_MIME[ext] ?? null,
+    mimeType: EXTENSION_MIME[ext] ?? "application/octet-stream",
   };
 
-  return { video, perPlatform: platforms.map((p) => platformWarnings(p, ext, stat.size)) };
+  const perPlatform = platforms.map((platform) => platformChecks(platform, ext));
+  return {ok: perPlatform.every((entry) => entry.ok), video, perPlatform };
 }

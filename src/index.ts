@@ -1,3 +1,5 @@
+import "./config/env.js"
+
 import { McpServer } from "@modelcontextprotocol/server"
 import { serveStdio } from "@modelcontextprotocol/server/stdio"
 import * as z from "zod/v4"
