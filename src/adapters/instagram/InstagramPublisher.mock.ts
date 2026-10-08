@@ -22,7 +22,11 @@ export class InstagramPublisherMock implements PlatformPublisher {
     return { ok: reasons.length === 0, reasons, warnings: [] };
   }
 
-  async publish(request: PublishRequest): Promise<PlatformPublishResult> {
+  async publish(_request: PublishRequest, dryRun: boolean): Promise<PlatformPublishResult> {
+    if(dryRun){
+      return {platform: this.platform, status: "dry_run", message: "Mock request validated, Nothing was posted."}
+    }
+    
     if (this.behavior.simulateFailure) {
       return { platform: this.platform, status: "failed", errorCategory: "simulated_failure", errorMessage: "Configured to fail." };
     }

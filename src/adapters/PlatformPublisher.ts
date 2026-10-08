@@ -9,5 +9,5 @@ export interface PlatformPublisher{
 
   validatePublishRequest(request: PublishRequest) : Promise<PublishRequestValidation>;
 
-  publish(request: PublishRequest) : Promise<PlatformPublishResult>;
+  publish(request: PublishRequest, dryRun: boolean) : Promise<PlatformPublishResult>;
 }

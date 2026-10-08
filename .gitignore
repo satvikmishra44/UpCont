@@ -5,3 +5,4 @@ dist/
 videos-approved/*
 !videos-approved/.gitkeep
 *.log
+output.txt

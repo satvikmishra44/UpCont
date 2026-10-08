@@ -19,20 +19,27 @@ function classifyYouTubeError(error: unknown): { category: string; message: stri
         response?: {
           status?: number;
           data?: {
-            error?: {
-              message?: string;
-              errors?: Array<{ reason?: string }>;
-            };
+            error? : string | {errors?: Array<{reason?: string}>} | null;
+            // error?: {
+            //   message?: string;
+            //   errors?: Array<{ reason?: string }>;
+            // };
           };
         };
       }
     ).response;
 
     const status = response?.status;
-    const reason = response?.data?.error?.errors?.[0]?.reason;
+    const data = response?.data?.error;
+    const oauthError = typeof data === "string" ? data : undefined;
+    const reason = typeof data === "object" && data !== null ? data.errors?.[0]?.reason : undefined;
 
-    if (status === 401 || reason === "authError" || reason === "invalidCredentials") {
+    if (oauthError === "invalid_grant" || status === 401 || reason === "authError" || reason === "invalidCredentials") {
       return {category: "authorization_expired", message: "YouTube authorization is invalid or expired. Reconnect YouTube."};
+    }
+
+    if (reason === "quotaExceeded" || reason === "uploadLimitExceeded") {
+      return {category: reason, message: "YouTube quota or upload limit reached. Try again after the daily quota reset."};
     }
 
     if (status === 403) {
@@ -123,26 +130,15 @@ export class YouTubePublisher implements PlatformPublisher {
         return {ok: reasons.length === 0, reasons, warnings};
   }
 
-  async publish(request: PublishRequest, dryRun=false): Promise<PlatformPublishResult> {
+  async publish(request: PublishRequest, dryRun: boolean): Promise<PlatformPublishResult> {
     const validation = await this.validatePublishRequest(request);
 
     if (!validation.ok) {
-      return {
-        platform: "youtube",
-        status: "failed",
-        errorCategory: "invalid_request",
-        errorMessage:
-          validation.reasons.join("; "),
-      };
+      return { platform: "youtube", status: "failed", errorCategory: "invalid_request", errorMessage: validation.reasons.join("; ")};
     }
 
     if (dryRun) {
-      return {
-        platform: "youtube",
-        status: "dry_run",
-        message:
-          "YouTube request validated. No network upload was performed.",
-      };
+      return { platform: "youtube", status: "dry_run", message: "YouTube request validated. No network upload was performed."};
     }
 
     try {
@@ -217,8 +213,7 @@ export class YouTubePublisher implements PlatformPublisher {
           "YouTube accepted the video upload.",
       };
     } catch (error) {
-      const classified =
-        classifyYouTubeError(error);
+      const classified = classifyYouTubeError(error);
 
       return {
         platform: "youtube",

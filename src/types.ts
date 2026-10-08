@@ -54,7 +54,7 @@ export interface PublishRequest {
   title: string;
   description: string;
   privacyStatus: PrivacyStatus;
-  targetId?: string;
+  targetId?: string | undefined;
   tags: string[];
   categoryId: string;
   madeForKids: boolean;

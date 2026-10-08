@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as z from "zod/v4";
 
 export const OpenOAuthSetupInstructionsInputSchema = z.object({
   platform: z.enum(["youtube", "facebook", "instagram"]),
