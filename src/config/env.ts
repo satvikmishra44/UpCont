@@ -33,7 +33,7 @@ const EnvironmentSchema = z.object({
 
   YOUTUBE_CLIENT_SECRET: z.string().optional(),
 
-  YOUTUBE_REDIRECT_URI: z.httpUrl().default("http://127.0.0.1:53682/oauth2/callback"),
+  YOUTUBE_REDIRECT_URI: z.url({protocol: /^http$/}).default("http://127.0.0.1:53682/oauth2/callback"),
 
   YOUTUBE_TOKEN_PATH: z.string().min(1).default(".data/youtube-token.json"),
 });
