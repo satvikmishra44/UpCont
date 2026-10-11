@@ -12,7 +12,7 @@ import type {
 import {
   validateVideoFile,
   VideoValidationError,
-} from "../video/validateVideoFile.js";
+} from "../videos/validateVideoFile.js";
 import { logger } from "../logger.js";
 
 export const PublishVideoInputSchema = z.object({

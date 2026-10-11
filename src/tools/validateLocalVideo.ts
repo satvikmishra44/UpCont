@@ -1,6 +1,6 @@
 import * as z from "zod/v4";
 import type { AppConfig } from "../config/env.js";
-import { validateVideoFile } from "../video/validateVideoFile.js";
+import { validateVideoFile } from "../videos/validateVideoFile.js";
 import type { ValidateVideoResult } from "../types.js";
 
 export const ValidateLocalVideoInputSchema = z.object({
