@@ -6,3 +6,5 @@ videos-approved/*
 !videos-approved/.gitkeep
 *.log
 output.txt
+client_secret*.json
+credentials*.json
