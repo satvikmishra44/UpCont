@@ -5,6 +5,8 @@ import * as z from "zod/v4";
 
 const PROJECT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 
+const OptionalNonEmptyString = z.preprocess((value) => (value === "" ? undefined : value), z.string().min(1).optional());
+
 dotenv.config({ path: path.join(PROJECT_ROOT, ".env"), quiet: true });
 
 function resolveFromRoot(value: string): string {
@@ -14,14 +16,9 @@ function resolveFromRoot(value: string): string {
 const EnvironmentSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
 
-  LOG_LEVEL: z
-    .enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"])
-    .default("info"),
+  LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"]).default("info"),
 
-  MOCK_MODE: z
-    .enum(["true", "false"])
-    .default("true")
-    .transform((value) => value === "true"),
+  MOCK_MODE: z.enum(["true", "false"]).default("true").transform((value) => value === "true"),
 
   VIDEO_UPLOAD_ROOT: z.string().min(1),
 
@@ -29,21 +26,50 @@ const EnvironmentSchema = z.object({
 
   YOUTUBE_MODE: z.enum(["mock", "real"]).default("mock"),
 
-  YOUTUBE_CLIENT_ID: z.string().optional(),
+  YOUTUBE_CLIENT_ID: OptionalNonEmptyString,
 
-  YOUTUBE_CLIENT_SECRET: z.string().optional(),
+  YOUTUBE_CLIENT_SECRET: OptionalNonEmptyString,
 
   YOUTUBE_REDIRECT_URI: z.url({protocol: /^http$/}).default("http://127.0.0.1:53682/oauth2/callback"),
 
   YOUTUBE_TOKEN_PATH: z.string().min(1).default(".data/youtube-token.json"),
+
+  FACEBOOK_MODE: z.enum(["mock", "real"]).default("mock"),
+  INSTAGRAM_MODE: z.enum(["mock", "real"]).default("mock"),
+
+  META_APP_ID: OptionalNonEmptyString,
+  META_APP_SECRET: OptionalNonEmptyString,
+  META_LOGIN_CONFIG_ID: OptionalNonEmptyString,
+
+  META_REDIRECT_URI: z.url({protocol: /^http$/}).default("http://127.0.0.1:53682/oauth2/callback"),
+  META_GRAPH_VERSION: z.string().min(1).default("v26.0"),
+  META_TOKEN_PATH: z.string().min(1).default(".data/meta-token.json"),
+
+  META_INSTAGRAM_POLL_INTERVAL_MS: z.coerce.number().int().min(1000).default(5000),
+
+  META_INSTAGRAM_PROCESSING_TIMEOUT_MS: z.coerce.number().int().min(30_000).default(300_000),
+
 });
 
+export type PlatformMode = "mock" | "real"
+
 export interface YouTubeConfig {
-  mode: "mock" | "real";
+  mode: PlatformMode;
   clientId?: string | undefined;
   clientSecret?: string | undefined;
   redirectUri: string;
   tokenPath: string;
+}
+
+export interface MetaConfig {
+  appId?: string | undefined;
+  appSecret?: string | undefined;
+  loginConfigId?: string | undefined;
+  redirectUri: string;
+  graphVersion: string;
+  tokenPath: string;
+  instagramPollIntervalMs: number;
+  instagramProcessingTimeoutMs: number;
 }
 
 export interface AppConfig {
@@ -53,6 +79,9 @@ export interface AppConfig {
   videoUploadRoot: string;
   maxVideoSizeMb: number;
   youtube: YouTubeConfig;
+  facebookMode: PlatformMode;
+  instagramMode: PlatformMode;
+  meta: MetaConfig;
 }
 
 export function loadConfig(): AppConfig {
@@ -77,5 +106,19 @@ export function loadConfig(): AppConfig {
       redirectUri: env.YOUTUBE_REDIRECT_URI,
       tokenPath: resolveFromRoot(env.YOUTUBE_TOKEN_PATH),
     },
+
+    facebookMode: env.FACEBOOK_MODE,
+    instagramMode: env.INSTAGRAM_MODE,
+
+    meta: {
+      appId: env.META_APP_ID,
+      appSecret: env.META_APP_SECRET,
+      loginConfigId: env.META_LOGIN_CONFIG_ID,
+      redirectUri: env.META_REDIRECT_URI,
+      graphVersion: env.META_GRAPH_VERSION,
+      tokenPath: path.resolve(env.META_TOKEN_PATH),
+      instagramPollIntervalMs: env.META_INSTAGRAM_POLL_INTERVAL_MS,
+      instagramProcessingTimeoutMs: env.META_INSTAGRAM_PROCESSING_TIMEOUT_MS 
+    }
   };
 }
