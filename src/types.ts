@@ -8,12 +8,7 @@ export type PlatformName = (typeof PLATFORM_NAMES)[number];
 
 export type PrivacyStatus = "private" | "unlisted" | "public";
 
-export type ConnectionState =
-  | "unconfigured"
-  | "disconnected"
-  | "authorizing"
-  | "authorized"
-  | "error";
+export type ConnectionState = "unconfigured" | "disconnected" | "authorizing" | "authorized" | "error";
 
 export interface ConnectionStatus {
   platform: PlatformName;
@@ -59,6 +54,9 @@ export interface PublishRequest {
   categoryId: string;
   madeForKids: boolean;
   notifySubscribers: boolean;
+
+  metaConfirmPublic: boolean;
+  instagramShareToFeed: boolean;
 }
 
 export interface PublishRequestValidation {
