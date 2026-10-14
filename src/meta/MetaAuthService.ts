@@ -45,7 +45,7 @@ export interface MetaAuthorizationStart {
 export interface MetaAuthorizationStatus {
   state: "unconfigured" | "disconnected" | "authorizing" | "authorized" | "error";
   details: string;
-  expiresAt?: string;
+  expiresAt?: string | undefined;
 }
 
 export interface MetaAuthPort {
@@ -68,7 +68,7 @@ function isLoopbackHost(hostname: string): boolean {
   return (hostname === "127.0.0.1" || hostname === "localhost" || hostname === "::1");
 }
 
-export function buildMetaAuthorizedUrl(config: Pick<MetaConfig  | "appId" | "redirectUri" | "graphVersion" | "loginConfigId">, state: string) : string{
+export function buildMetaAuthorizationUrl(config: Pick<MetaConfig, "appId" | "redirectUri" | "graphVersion" | "loginConfigId">, state: string) : string{
     if(!config.appId){
         throw new Error("META_APP_ID is missing");
     }
@@ -91,8 +91,8 @@ export function buildMetaAuthorizedUrl(config: Pick<MetaConfig  | "appId" | "red
 
 export class MetaAuthService implements MetaAuthPort{
     private readonly tokenStore: MetaTokenStore;
-    private pending?: PendingAuthorization;
-    private lastError?: string;
+    private pending?: PendingAuthorization | undefined;
+    private lastError?: string | undefined;
 
     constructor(private readonly config: MetaConfig, private readonly graph: MetaGraphPort){
         this.tokenStore = new MetaTokenStore(config.tokenPath);
@@ -109,7 +109,7 @@ export class MetaAuthService implements MetaAuthPort{
         }
     }
 
-    private validateRediirectUri(): void{
+    private validateRedirectUri(): void{
         const redirect = new URL(this.config.redirectUri);
 
         if(redirect.protocol !== "http:"){
@@ -432,7 +432,7 @@ export class MetaAuthService implements MetaAuthPort{
             tokenType: refreshed.token_type ?? existing.tokenType
         });
 
-        return {refreshed: true, expiresAt};
+        return expiresAt ? {refreshed: true, expiresAt} : {refreshed: true};
     }
 
     async disconnect(revokeRemote: boolean): Promise<{disconnected: true; remoteRevoked: boolean;}> {
