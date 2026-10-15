@@ -291,5 +291,5 @@ export class InstagramPublisher implements PlatformPublisher{
         }
 
         throw new Error("Instagram media processing timed out before the container became publishable.");
-  }
+    }
 }
