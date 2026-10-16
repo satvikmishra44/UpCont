@@ -291,6 +291,4 @@ function createServer(): McpServer {
 
 void serveStdio(createServer);
 
-console.error(
-  "UpCont MCP server running over stdio",
-);
+console.error("UpCont MCP server running over stdio");

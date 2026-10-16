@@ -59,6 +59,8 @@ function createRequest(
     madeForKids: false,
     notifySubscribers: false,
     ...overrides,
+    metaConfirmPublic: false,
+    instagramShareToFeed: true,
   };
 }
 

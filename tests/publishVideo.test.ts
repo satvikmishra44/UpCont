@@ -29,6 +29,15 @@ beforeAll(async () => {
       redirectUri: "http://127.0.0.1:53682/oauth2/callback",
       tokenPath: path.join(tempRoot, "token.json"),
     },
+    facebookMode: "mock",
+    instagramMode: "mock",
+    meta: {
+      redirectUri: "http://127.0.0.1:53683/meta/oauth/callback",
+      graphVersion: "v26.0",
+      tokenPath: path.join(tempRoot, "meta-token.json"),
+      instagramPollIntervalMs: 1000,
+      instagramProcessingTimeoutMs: 30_000,
+    },
   };
 });
 
@@ -58,6 +67,8 @@ function baseInput(overrides: Partial<PublishVideoInput> = {}): PublishVideoInpu
     notifySubscribers: false,
     dryRun: true,
     confirmPublish: false,
+    metaConfirmPublic: false,
+    instagramShareToFeed: true,
     ...overrides,
   };
 }
@@ -175,4 +186,33 @@ describe("publishVideo", () => {
 
     expect(spy).not.toHaveBeenCalled();
   });
+});
+
+it("rejects real Meta publishing without public confirmation", async () => {
+  await expect(
+    publishVideo(
+      {
+        fileName: "clip.mp4",
+        platforms: ["facebook"],
+        targetIds: {
+          facebook: "mock-page-id",
+        },
+        title: "Meta safety test",
+        description: "",
+        privacyStatus: "private",
+        tags: [],
+        categoryId: "22",
+        madeForKids: false,
+        notifySubscribers: false,
+        metaConfirmPublic: false,
+        instagramShareToFeed: true,
+        dryRun: false,
+        confirmPublish: true,
+      },
+      config,
+      buildPublishers(),
+    ),
+  ).rejects.toThrow(
+    /metaConfirmPublic/i,
+  );
 });
