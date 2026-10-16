@@ -3,7 +3,7 @@ import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import { validateVideoFile, VideoValidationError } from "../src/video/validateVideoFile.js";
+import { validateVideoFile, VideoValidationError } from "../src/videos/validateVideoFile.js";
 
 let tempRoot: string;
 const limit = 10 * 1024 * 1024;

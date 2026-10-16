@@ -136,22 +136,34 @@ describe("publishVideo", () => {
 
   it("returns partial_success when one platform fails", async () => {
     const publishers = buildPublishers();
-    publishers.facebook = new FacebookPagePublisherMock({ simulateFailure: true });
+
+    publishers.facebook = new FacebookPagePublisherMock({
+      simulateFailure: true,
+    });
 
     const result = await publishVideo(
       baseInput({
         platforms: ["youtube", "facebook"],
-        targetIds: { facebook: "mock-page-id" },
+        targetIds: {
+          facebook: "mock-page-id",
+        },
         dryRun: false,
         confirmPublish: true,
+        metaConfirmPublic: true,
       }),
       config,
       publishers,
     );
 
     expect(result.overallStatus).toBe("partial_success");
-    expect(result.results.find((entry) => entry.platform === "youtube")?.status).toBe("success");
-    expect(result.results.find((entry) => entry.platform === "facebook")?.status).toBe("failed");
+
+    expect(
+      result.results.find((entry) => entry.platform === "youtube")?.status,
+    ).toBe("success");
+
+    expect(
+      result.results.find((entry) => entry.platform === "facebook")?.status,
+    ).toBe("failed");
   });
 
   it("blocks a real publish to an unauthorized platform", async () => {
