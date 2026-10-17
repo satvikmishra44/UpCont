@@ -41,7 +41,7 @@ const EnvironmentSchema = z.object({
   META_APP_SECRET: OptionalNonEmptyString,
   META_LOGIN_CONFIG_ID: OptionalNonEmptyString,
 
-  META_REDIRECT_URI: z.url({protocol: /^http$/}).default("http://127.0.0.1:53682/oauth2/callback"),
+  META_REDIRECT_URI: z.url({protocol: /^https$/}).default("https://127.0.0.1:53682/oauth2/callback"),
   META_GRAPH_VERSION: z.string().min(1).default("v26.0"),
   META_TOKEN_PATH: z.string().min(1).default(".data/meta-token.json"),
 

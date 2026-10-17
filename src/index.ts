@@ -1,6 +1,9 @@
 import {McpServer} from "@modelcontextprotocol/server";
 import {serveStdio} from "@modelcontextprotocol/server/stdio";
 import * as z from "zod/v4";
+import { appendFileSync, mkdirSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 import type {PlatformPublisher} from "./adapters/PlatformPublisher.js";
 import {FacebookPagePublisherMock} from "./adapters/facebook/FacebookPagePublisher.mock.js";
@@ -289,6 +292,55 @@ function createServer(): McpServer {
   return server;
 }
 
-void serveStdio(createServer);
+// void serveStdio(createServer);
 
-console.error("UpCont MCP server running over stdio");
+// console.error("UpCont MCP server running over stdio");
+
+const crashLogPath = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "..",
+  ".data",
+  "logs",
+  "upcont-crash.log",
+);
+
+function crashLog(label: string, error: unknown): void {
+  const text =
+    error instanceof Error
+      ? `${error.name}: ${error.message}\n${error.stack ?? ""}`
+      : String(error);
+
+  const line = `[${new Date().toISOString()}] ${label}\n${text}\n\n`;
+
+  console.error(line);
+
+  try {
+    mkdirSync(path.dirname(crashLogPath), { recursive: true });
+    appendFileSync(crashLogPath, line);
+  } catch {
+    // Logging must never crash the server.
+  }
+}
+
+process.on("uncaughtException", (error) => {
+  crashLog("uncaughtException", error);
+  process.exit(1);
+});
+
+process.on("unhandledRejection", (reason) => {
+  crashLog("unhandledRejection", reason);
+  process.exit(1);
+});
+
+function createServerWithLogging(): McpServer {
+  try {
+    return createServer();
+  } catch (error) {
+    crashLog("createServer factory failed", error);
+    throw error;
+  }
+}
+
+crashLog("startup", `pid=${process.pid} cwd=${process.cwd()}`);
+
+serveStdio(createServerWithLogging);
