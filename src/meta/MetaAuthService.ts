@@ -1,10 +1,13 @@
 import {randomBytes, timingSafeEqual} from "node:crypto";
-import { createServer, type IncomingMessage, type Server, type ServerResponse} from "node:http";
+import { type IncomingMessage, type ServerResponse} from "node:http";
+import { createServer, type Server } from "node:https";
 
 import type { MetaConfig } from "../config/env.js";
 import { logger } from "../logger.js";
 import type { MetaGraphPort } from "./MetaGraphClient.js";
 import { MetaTokenStore, type StoredMetaAuthorization } from "./MetaTokenStore.js";
+import { readFile } from "node:fs/promises";
+import path from "node:path";
 
 export const META_PERMISSIONS = [
     "pages_show_list",
@@ -112,8 +115,8 @@ export class MetaAuthService implements MetaAuthPort{
     private validateRedirectUri(): void{
         const redirect = new URL(this.config.redirectUri);
 
-        if(redirect.protocol !== "http:"){
-            throw new Error("Local Meta OAuth redirect URI must use http://.");
+        if(redirect.protocol !== "https:"){
+            throw new Error("Meta OAuth callback must use HTTPS.");
         }
 
         if(!isLoopbackHost(redirect.hostname)){
@@ -123,22 +126,28 @@ export class MetaAuthService implements MetaAuthPort{
         if (!redirect.port) {
           throw new Error("Meta OAuth callback requires an explicit local port.")
         }
+
+        if(redirect.username || redirect.password || redirect.search || redirect.hash){
+            throw new Error("Meta OAuth callback must not contain credentials, query parameters or fragment")
+        }
     }
 
     async startAuthorization(): Promise<MetaAuthorizationStart>{
         this.assertConfigured();
         
         if (this.pending) {
-      throw new Error(
-        "A Meta authorization is already in progress.",
-      );
-    }
+          throw new Error("A Meta authorization is already in progress.");
+        }
 
     const redirect = new URL(this.config.redirectUri);
     const state = randomBytes(32).toString("hex");
     const expiresAt = Date.now() + AUTHORIZATION_TIMEOUT_MS;
 
-    const server = createServer((request, response) => {
+    const certDict = path.join(path.dirname(this.config.tokenPath), "certs");
+
+    const [key, cert] = await Promise.all([readFile(path.join(certDict, "localhost-key.pem")), readFile(path.join(certDict, "localhost.pem"))])
+
+    const server = createServer({key, cert, minVersion: "TLSv1.2"}, (request, response) => {
             void this.handleCallback(request, response, state);
         }
     );
@@ -157,7 +166,7 @@ export class MetaAuthService implements MetaAuthPort{
         server.once("error", onError);
         server.once("listening", onListening);
 
-        server.listen(Number(redirect.port), redirect.hostname); 
+        server.listen(Number(redirect.port), "127.0.0.1"); 
     })
 
     const timeout = setTimeout(() => {
