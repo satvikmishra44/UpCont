@@ -8,3 +8,4 @@ videos-approved/*
 output.txt
 client_secret*.json
 credentials*.json
+*.mp4

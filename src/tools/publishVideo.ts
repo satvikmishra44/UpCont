@@ -86,7 +86,7 @@ export async function publishVideo(input: PublishVideoInput, config: AppConfig, 
 
       tags: input.tags,
       categoryId: input.categoryId,
-      madeForKids: input.madeForKids,
+      madeForKids: input.madeForKids || false,
       notifySubscribers: input.notifySubscribers,
 
       metaConfirmPublic: input.metaConfirmPublic,
