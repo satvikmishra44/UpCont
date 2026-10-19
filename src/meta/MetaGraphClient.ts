@@ -29,10 +29,51 @@ interface MetaErrorPayload {
   };
 }
 
+// export class MetaApiError extends Error {
+//   constructor(message: string, readonly status?: number, readonly code?: number, readonly subcode?: number, readonly metaType?: string, readonly transient?: boolean) {
+//     super(message);
+//     this.name = "MetaApiError";
+//   }
+// }
+
+export interface MetaErrorDiagnostics {
+  method?: string;
+  url?: string;
+  httpStatus?: number;
+  networkCode?: string;
+  fbtraceId?: string;
+  body?: string;
+}
+
 export class MetaApiError extends Error {
-  constructor(message: string, readonly status?: number, readonly code?: number, readonly subcode?: number, readonly metaType?: string, readonly transient?: boolean) {
+  constructor(
+    message: string,
+    readonly status?: number,
+    readonly code?: number,
+    readonly subcode?: number,
+    readonly metaType?: string,
+    readonly transient?: boolean,
+    readonly diagnostics?: MetaErrorDiagnostics,
+  ) {
     super(message);
     this.name = "MetaApiError";
+  }
+}
+
+function redact(text: string): string {
+  return text
+    .replace(/EAA[A-Za-z0-9]+/g, "[token]")
+    .replace(/appsecret_proof=[a-f0-9]+/gi, "appsecret_proof=[redacted]")
+    .slice(0, 1500);
+}
+
+function safeUrl(raw?: string): string | undefined {
+  if (!raw) return undefined;
+  try {
+    const parsed = new URL(raw);
+    return `${parsed.origin}${parsed.pathname}`;
+  } catch {
+    return undefined;
   }
 }
 
@@ -41,21 +82,49 @@ export function createAppSecretProof(accessToken: string, appSecret: string) : s
 }
 
 function normalizeError(error: unknown): MetaApiError {
-    if(!axios.isAxiosError(error)){
-        return new MetaApiError("Unexpected Meta API failure");
-    }
+  if (!axios.isAxiosError(error)) {
+    return new MetaApiError("Unexpected Meta API failure (not an HTTP error).");
+  }
 
-    const axiosError = error as AxiosError<MetaErrorPayload>;
+  const data = error.response?.data as
+    | (MetaErrorPayload & {
+        message?: string;
+        debug_info?: { message?: string; type?: string; retriable?: boolean };
+        error?: MetaErrorPayload["error"] & { fbtrace_id?: string };
+      })
+    | string
+    | undefined;
 
-    const payload = axiosError.response?.data?.error;
+  const body =
+    typeof data === "string" ? data : data ? JSON.stringify(data) : undefined;
 
-    return new MetaApiError(
-        payload?.message ?? "Meta API request failed.",
-        axiosError.response?.status,
-        payload?.code,
-        payload?.error_subcode,
-        payload?.type,
-        payload?.is_transient);
+  const objectData = typeof data === "object" ? data : undefined;
+  const payload = objectData?.error;
+  const requestUrl = safeUrl(error.config?.url);
+
+  const message =
+    payload?.message ??
+    objectData?.debug_info?.message ??
+    objectData?.message ??
+    error.message ??
+    "Meta API request failed.";
+
+  return new MetaApiError(
+    message,
+    error.response?.status,
+    payload?.code,
+    payload?.error_subcode,
+    payload?.type ?? objectData?.debug_info?.type,
+    payload?.is_transient,
+    {
+      ...(error.config?.method ? { method: error.config.method.toUpperCase() } : {}),
+      ...(requestUrl ? { url: requestUrl } : {}),
+      ...(error.response?.status !== undefined ? { httpStatus: error.response.status } : {}),
+      ...(error.code !== undefined ? { networkCode: error.code } : {}),
+      ...(payload?.fbtrace_id !== undefined ? { fbtraceId: payload.fbtrace_id } : {}),
+      ...(body ? { body: redact(body) } : {}),
+    },
+  );
 }
 
 export class MetaGraphClient implements MetaGraphPort{
@@ -140,33 +209,56 @@ export class MetaGraphClient implements MetaGraphPort{
         }
     }
 
-    async postBinaryUrl<T>(uploadUrl: string, accessToken: string, absolutePath: string, fileSize: number, mimeType: string): Promise<T> {
-        const parsed = new URL(uploadUrl);
+    async postBinaryUrl<T>(
+        uploadUrl: string,
+        accessToken: string,
+        absolutePath: string,
+        fileSize: number,
+        mimeType: string,
+        ): Promise<T> {
+  const parsed = new URL(uploadUrl);
 
-        if (parsed.protocol !== "https:" || parsed.hostname !== "rupload.facebook.com") {
-            throw new Error("Meta supplied an unexpected upload host; upload was refused.");
-        }
+  if (
+    parsed.protocol !== "https:" ||
+    parsed.hostname !== "rupload.facebook.com"
+  ) {
+    throw new Error(
+      "Meta supplied an unexpected upload host; upload was refused.",
+    );
+  }
 
-        try{
-            const response = await axios.post<T>(uploadUrl, createReadStream(absolutePath), {
-                headers: {
-                    Authorization: `OAuth ${accessToken}`,
-                    offset: "0",
-                    file_size: String(fileSize),
-                    "Content-Type": mimeType,
-                    "Content-Length": String(fileSize),
-                },
-                timeout: 15 * 60_000,
-                maxBodyLength: Number.POSITIVE_INFINITY,
-                maxContentLength: Number.POSITIVE_INFINITY,
-            })
+  try {
+    const response = await axios.post<T>(
+      uploadUrl,
+      createReadStream(absolutePath),
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          offset: "0",
+          file_offset: "0",
+          file_size: String(fileSize),
+          "Content-Type": mimeType,
+          "Content-Length": String(fileSize),
+        },
+        timeout: 15 * 60_000,
+        maxBodyLength: Number.POSITIVE_INFINITY,
+        maxContentLength: Number.POSITIVE_INFINITY,
+        validateStatus: () => true,
+      },
+    );
 
-            return response.data;
-        } catch(error){
-            throw normalizeError(error);
-        }
+    if (response.status < 200 || response.status >= 300) {
+      throw new MetaApiError(
+        `Instagram binary upload failed with HTTP ${response.status}: ${JSON.stringify(response.data)}`,
+        response.status,
+      );
     }
 
+    return response.data;
+  } catch (error) {
+    throw normalizeError(error);
+  }
+}
     async deleteForm<T>(path: string, accessToken: string): Promise<T>{
         try{
             const response = await axios.delete<T>(this.graphUrl(path), {
