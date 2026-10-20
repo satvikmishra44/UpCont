@@ -29,6 +29,7 @@ export interface ValidatedVideo {
   absolutePath: string;
   sizeBytes: number;
   mimeType: string;
+  sourceType: "absolute_path" | "upload_root"
 }
 
 export interface PlatformVideoValidation {

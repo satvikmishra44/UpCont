@@ -1,15 +1,20 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import type { PlatformName, PlatformVideoValidation, ValidatedVideo, ValidateVideoResult } from "../types.js";
+import mime from "mime-types";
 
-const ALLOWED_EXTENSIONS = new Set([".mp4", ".mov", ".m4v", ".avi", ".webm"]);
-const EXTENSION_MIME: Record<string, string> = {
-  ".mp4": "video/mp4",
-  ".m4v": "video/x-m4v",
-  ".mov": "video/quicktime",
-  ".avi": "video/x-msvideo",
-  ".webm": "video/webm",
-};
+import type {
+  PlatformName,
+  PlatformVideoValidation,
+  ValidateVideoResult,
+  ValidatedVideo,
+} from "../types.js";
+
+const SUPPORTED_EXTENSIONS = new Set([
+  ".mp4",
+  ".mov",
+  ".m4v",
+  ".webm",
+]);
 
 export class VideoValidationError extends Error {
   constructor(message: string) {
@@ -18,99 +23,139 @@ export class VideoValidationError extends Error {
   }
 }
 
-function isInside(root: string, target: string): boolean {
-  const relative = path.relative(root, target);
-  return (relative !== "" && relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative))
-}
-
-async function resolveSafePath(fileName: string, videoUploadRoot: string): Promise<string> {
-  if (fileName.trim() === "" || fileName.includes("..") || path.isAbsolute(fileName) || fileName.includes("\0")) {
-    throw new VideoValidationError("fileName must be a plain relative name, no '..' or absolute paths.");
-  }
-
-  let realRoot : string;
-
-  try {
-    realRoot = await fs.realpath(videoUploadRoot);
-  } catch {
-    throw new VideoValidationError("VIDEO_UPLOAD_ROOT does not exist or is not accessible.");
-  }
-
-  const candidate = path.resolve(realRoot, fileName);
-
-  if (!isInside(realRoot, candidate)) {
-    throw new VideoValidationError("Resolved path escapes VIDEO_UPLOAD_ROOT.");
-  }
-
-  let realCandidate: string;
-
-  try {
-    realCandidate = await fs.realpath(candidate);
-  } catch {
-    throw new VideoValidationError(`File not found: ${fileName}`);
-  }
-
-  if (!isInside(realRoot, realCandidate)) {
-    throw new VideoValidationError("Symlink escapes VIDEO_UPLOAD_ROOT; rejected.");
-  }
-
-  const stat = await fs.stat(realCandidate);
-
-  if (!stat.isFile()) {
-    throw new VideoValidationError(`Not a regular file: ${fileName}`);
-  }
-  
-  return realCandidate;
-}
-
-function platformChecks(platform: PlatformName, extension: string): PlatformVideoValidation{
-  const warnings : string[] = [];
-  const errors: string[] = [];
-
-  if (platform === "instagram") {
-    if (extension !== ".mp4" && extension !== ".mov") {
-      warnings.push("Instagram prefers MP4 or MOV containers.");
-    }
-
-    warnings.push("Instagram's API generally requires a public HTTPS URL, not a local file.");
-  }
-
-  return { platform, ok: errors.length === 0, warnings, errors };
-}
-
-export interface ValidateVideoInput {
-  fileName: string;
+export interface ValidateVideoFileInput {
+  filePath: string;
   platforms: PlatformName[];
   videoUploadRoot: string;
   maxVideoSizeBytes: number;
 }
 
-export async function validateVideoFile(input: ValidateVideoInput) : Promise<ValidateVideoResult> {
-  const { fileName, platforms, videoUploadRoot, maxVideoSizeBytes } = input;
-  const ext = path.extname(fileName).toLowerCase();
+function isAbsolutePath(input: string): boolean {
+  return path.isAbsolute(input);
+}
 
-  if (!ALLOWED_EXTENSIONS.has(ext)) {
-    throw new VideoValidationError(`Unsupported extension "${ext || "(none)"}".`);
+function hasSupportedExtension(filePath: string): boolean {
+  return SUPPORTED_EXTENSIONS.has(path.extname(filePath).toLowerCase());
+}
+
+async function ensureFileExists(resolvedPath: string): Promise<void> {
+  let stat;
+  try {
+    stat = await fs.stat(resolvedPath);
+  } catch {
+    throw new VideoValidationError(`Video file not found: ${resolvedPath}`);
   }
 
-  const absolutePath = await resolveSafePath(fileName, videoUploadRoot);
-  const stat = await fs.stat(absolutePath);
+  if (!stat.isFile()) {
+    throw new VideoValidationError(`Path is not a file: ${resolvedPath}`);
+  }
+}
 
-  if (stat.size > maxVideoSizeBytes) {
-    throw new VideoValidationError(`File exceeds configured size limit.`);
+function ensureInsideRoot(root: string, candidate: string): void {
+  const relative = path.relative(root, candidate);
+
+  if (
+    relative.startsWith("..") ||
+    path.isAbsolute(relative)
+  ) {
+    throw new VideoValidationError(
+      "Relative video paths must stay inside VIDEO_UPLOAD_ROOT.",
+    );
+  }
+}
+
+function resolveCandidatePath(
+  filePath: string,
+  videoUploadRoot: string,
+): { absolutePath: string; sourceType: "absolute_path" | "upload_root" } {
+  const trimmed = filePath.trim();
+
+  if (!trimmed) {
+    throw new VideoValidationError("filePath cannot be empty.");
   }
 
-  if(stat.size === 0){
-    throw new VideoValidationError("File is empty");
+  if (isAbsolutePath(trimmed)) {
+    return {
+      absolutePath: path.resolve(trimmed),
+      sourceType: "absolute_path",
+    };
   }
+
+  const resolved = path.resolve(videoUploadRoot, trimmed);
+  ensureInsideRoot(path.resolve(videoUploadRoot), resolved);
+
+  return {
+    absolutePath: resolved,
+    sourceType: "upload_root",
+  };
+}
+
+function buildPlatformValidation(platform: PlatformName): PlatformVideoValidation {
+  if (platform === "instagram") {
+    return {
+      platform,
+      ok: true,
+      warnings: [
+        "Instagram publishing uses the local file for upload, but the linked Meta account and Reel processing must still succeed.",
+      ],
+      errors: [],
+    };
+  }
+
+  if (platform === "facebook") {
+    return {
+      platform,
+      ok: true,
+      warnings: [
+        "Facebook Page visibility is public-facing and is not controlled by the YouTube privacyStatus field.",
+      ],
+      errors: [],
+    };
+  }
+
+  return {
+    platform,
+    ok: true,
+    warnings: [],
+    errors: [],
+  };
+}
+
+export async function validateVideoFile(
+  input: ValidateVideoFileInput,
+): Promise<ValidateVideoResult> {
+  const resolved = resolveCandidatePath(input.filePath, input.videoUploadRoot);
+
+  if (!hasSupportedExtension(resolved.absolutePath)) {
+    throw new VideoValidationError(
+      `Unsupported video extension: ${path.extname(resolved.absolutePath) || "(none)"}`,
+    );
+  }
+
+  await ensureFileExists(resolved.absolutePath);
+
+  const stat = await fs.stat(resolved.absolutePath);
+
+  if (stat.size > input.maxVideoSizeBytes) {
+    throw new VideoValidationError(
+      `Video exceeds maximum allowed size of ${input.maxVideoSizeBytes} bytes.`,
+    );
+  }
+
+  const mimeType =
+    mime.lookup(resolved.absolutePath) || "application/octet-stream";
 
   const video: ValidatedVideo = {
-    fileName,
-    absolutePath,
+    fileName: path.basename(resolved.absolutePath),
+    absolutePath: resolved.absolutePath,
     sizeBytes: stat.size,
-    mimeType: EXTENSION_MIME[ext] ?? "application/octet-stream",
+    mimeType: String(mimeType),
+    sourceType: resolved.sourceType,
   };
 
-  const perPlatform = platforms.map((platform) => platformChecks(platform, ext));
-  return {ok: perPlatform.every((entry) => entry.ok), video, perPlatform };
+  return {
+    ok: true,
+    video,
+    perPlatform: input.platforms.map(buildPlatformValidation),
+  };
 }

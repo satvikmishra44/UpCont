@@ -6,7 +6,7 @@ import type {PlatformName, PlatformPublishResult, PublishRequest, PublishVideoRe
 import {validateVideoFile, VideoValidationError} from "../videos/validateVideoFile.js" 
 
 export const PublishVideoInputSchema = z.object({
-    fileName: z.string().min(1),
+    filePath: z.string().min(1),
     platforms: z.array(z.enum(["youtube", "facebook", "instagram"])).min(1),
     targetIds: z.record(z.string(), z.string()).default({}),
     title: z.string().min(1).max(100),
@@ -59,7 +59,7 @@ export async function publishVideo(input: PublishVideoInput, config: AppConfig, 
 
     try {
       validatedVideo = await validateVideoFile({
-          fileName: input.fileName,
+          filePath: input.filePath,
           platforms: input.platforms,
           videoUploadRoot: config.videoUploadRoot,
           maxVideoSizeBytes: config.maxVideoSizeMb * 1024 * 1024,
