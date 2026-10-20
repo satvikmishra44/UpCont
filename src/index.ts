@@ -23,6 +23,7 @@ import {ListPublishTargetsInputSchema, listPublishTargets} from "./tools/listPub
 import {OpenOAuthSetupInstructionsInputSchema, openOAuthSetupInstructions} from "./tools/openOAuthSetupInstructions.js";
 import {PublishVideoInputSchema, publishVideo} from "./tools/publishVideo.js";
 import {ValidateLocalVideoInputSchema, validateLocalVideo} from "./tools/validateLocalVideo.js";
+import { PrepareUploadPlanInputSchema, prepareUploadPlan } from "./tools/prepareUploadPlan.js";
 import type {PlatformName} from "./types.js";
 
 const VERSION = "0.3.0";
@@ -139,6 +140,18 @@ function createServer(): McpServer {
       }
     },
   );
+
+  server.registerTool("prepare_upload_plan", {
+    title: "Prepare Upload Plan",
+    description: "Preflights a video upload request, resolves file location, checks platform authorization, and lists likely next steps before publishing.",
+    inputSchema: PrepareUploadPlanInputSchema
+  }, async (input) => {
+    try{
+      return successResult(await prepareUploadPlan(input, config, publishers));
+    } catch(error){
+      return failureResult(error);
+    }
+  })
 
   server.registerTool("meta_start_oauth", {
       title: "Connect Facebook and Instagram",
@@ -291,10 +304,6 @@ function createServer(): McpServer {
 
   return server;
 }
-
-// void serveStdio(createServer);
-
-// console.error("UpCont MCP server running over stdio");
 
 const crashLogPath = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
