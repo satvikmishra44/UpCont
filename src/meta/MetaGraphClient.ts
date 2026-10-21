@@ -25,6 +25,7 @@ interface MetaErrorPayload {
         code?: number;
         error_subcode?: number;
         is_transient?: boolean;
+        fbtrace_id?: string;
     };
 }
 
@@ -53,7 +54,11 @@ export class MetaApiError extends Error {
 }
 
 function redact(text: string): string {
-    return text.replace(/EAA[A-Za-z0-9]+/g, "[token]").replace(/appsecret_proof=[a-f0-9]+/gi, "appsecret_proof=[redacted]").slice(0, 1500);
+    return text
+        .replace(/access_token=[^&\s"]+/gi, "access_token=[redacted]")
+        .replace(/appsecret_proof=[a-f0-9]+/gi, "appsecret_proof=[redacted]")
+        .replace(/EA[A-Za-z0-9]+/g, "[token]")
+        .slice(0, 1500);
 }
 
 function safeUrl(raw?: string): string | undefined {
@@ -72,16 +77,19 @@ export function createAppSecretProof(accessToken: string, appSecret: string): st
 }
 
 function normalizeError(error: unknown): MetaApiError {
+    if (error instanceof MetaApiError) {
+        return error;
+    }
+
     if (!axios.isAxiosError(error)) {
         return new MetaApiError("Unexpected Meta API failure (not an HTTP error).");
     }
 
     const data = error.response?.data as
         | (MetaErrorPayload & {
-            message?: string;
-            debug_info?: { message?: string; type?: string; retriable?: boolean };
-            error?: MetaErrorPayload["error"] & { fbtrace_id?: string };
-        })
+              message?: string;
+              debug_info?: { message?: string; type?: string; retriable?: boolean };
+          })
         | string
         | undefined;
 
@@ -90,7 +98,12 @@ function normalizeError(error: unknown): MetaApiError {
     const payload = objectData?.error;
     const requestUrl = safeUrl(error.config?.url);
 
-    const message = payload?.message ?? objectData?.debug_info?.message ?? objectData?.message ?? error.message ?? "Meta API request failed.";
+    const message =
+        payload?.message ??
+        objectData?.debug_info?.message ??
+        objectData?.message ??
+        error.message ??
+        "Meta API request failed.";
 
     return new MetaApiError(
         message,
@@ -171,7 +184,10 @@ export class MetaGraphClient implements MetaGraphPort {
             form.append(key, String(value));
         }
 
-        form.append(file.fieldName, createReadStream(file.absolutePath), { filename: file.fileName, contentType: file.mimeType });
+        form.append(file.fieldName, createReadStream(file.absolutePath), {
+            filename: file.fileName,
+            contentType: file.mimeType,
+        });
 
         try {
             const response = await axios.post<T>(this.graphUrl(path), form, {
@@ -215,9 +231,20 @@ export class MetaGraphClient implements MetaGraphPort {
             });
 
             if (response.status < 200 || response.status >= 300) {
+                const uploadSafeUrl = safeUrl(uploadUrl);
                 throw new MetaApiError(
-                    `Instagram binary upload failed with HTTP ${response.status}: ${JSON.stringify(response.data)}`,
+                    `Instagram binary upload failed with HTTP ${response.status}: ${redact(JSON.stringify(response.data))}`,
                     response.status,
+                    undefined,
+                    undefined,
+                    undefined,
+                    false,
+                    {
+                        method: "POST",
+                        ...(uploadSafeUrl ? { url: uploadSafeUrl } : {}),
+                        httpStatus: response.status,
+                        body: redact(JSON.stringify(response.data)),
+                    },
                 );
             }
 

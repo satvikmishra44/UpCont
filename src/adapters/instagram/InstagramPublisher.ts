@@ -1,7 +1,13 @@
 import type { MetaAuthPort } from "../../meta/MetaAuthService.js";
 import type { MetaAssetPort } from "../../meta/MetaAssetService.js";
 import { MetaApiError, type MetaGraphPort } from "../../meta/MetaGraphClient.js";
-import type { ConnectionStatus, PlatformPublishResult, PublishRequest, PublishRequestValidation, PublishTarget } from "../../types.js";
+import type {
+    ConnectionStatus,
+    PlatformPublishResult,
+    PublishRequest,
+    PublishRequestValidation,
+    PublishTarget,
+} from "../../types.js";
 import type { PlatformPublisher } from "../PlatformPublisher.js";
 
 interface InstagramContainerResponse {
@@ -30,7 +36,12 @@ interface InstagramMediaResponse {
 
 type SleepFunction = (milliseconds: number) => Promise<void>;
 
-const defaultSleep: SleepFunction = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
+const defaultSleep: SleepFunction = (milliseconds) =>
+    new Promise((resolve) => setTimeout(resolve, milliseconds));
+
+function logInstagramEvent(event: Record<string, unknown>): void {
+    console.error(JSON.stringify({ platform: "instagram", ...event }));
+}
 
 function buildCaption(request: PublishRequest): string {
     const title = request.title.trim();
@@ -41,23 +52,48 @@ function buildCaption(request: PublishRequest): string {
     return `${title}\n\n${description}`;
 }
 
-function classifyInstagramError(error: unknown, step: string): { category: string; message: string } {
+function classifyInstagramError(
+    error: unknown,
+    step: string,
+): { category: string; message: string } {
     if (error instanceof MetaApiError) {
         const d = error.diagnostics;
         const detail = `[step=${step}] ${error.message} | http=${d?.httpStatus ?? "none"} | net=${d?.networkCode ?? "none"} | code=${error.code ?? "none"}/${error.subcode ?? "none"} | url=${d?.url ?? "n/a"} | trace=${d?.fbtraceId ?? "n/a"} | body=${d?.body ?? "n/a"}`;
 
-        console.error("[instagram-publish-failure]", detail);
+        logInstagramEvent({
+            step,
+            event: "publish_failure",
+            category: error.code ?? "unknown",
+            message: detail,
+        });
 
-        if (error.code === 190) return { category: "authorization_expired", message: detail };
-        if (error.code === 10 || error.code === 200) return { category: "permission_denied", message: detail };
+        if (error.code === 190) {
+            return { category: "authorization_expired", message: detail };
+        }
 
-        return { category: `meta_error_${error.code ?? "unknown"}`, message: detail };
+        if (error.code === 10 || error.code === 200) {
+            return { category: "permission_denied", message: detail };
+        }
+
+        return {
+            category: `meta_error_${error.code ?? "unknown"}`,
+            message: detail,
+        };
     }
 
     const text = error instanceof Error ? error.message : "unknown";
-    console.error("[instagram-publish-failure]", `[step=${step}] ${text}`);
 
-    return { category: "instagram_unexpected_error", message: `[step=${step}] ${text}` };
+    logInstagramEvent({
+        step,
+        event: "publish_failure",
+        category: "unknown",
+        message: text,
+    });
+
+    return {
+        category: "instagram_unexpected_error",
+        message: `[step=${step}] ${text}`,
+    };
 }
 
 export class InstagramPublisher implements PlatformPublisher {
@@ -76,7 +112,11 @@ export class InstagramPublisher implements PlatformPublisher {
         const authorization = await this.auth.getStatus();
 
         if (authorization.state !== "authorized") {
-            return { platform: "instagram", state: authorization.state, details: authorization.details };
+            return {
+                platform: "instagram",
+                state: authorization.state,
+                details: authorization.details,
+            };
         }
 
         try {
@@ -109,25 +149,45 @@ export class InstagramPublisher implements PlatformPublisher {
         }));
     }
 
-    async validatePublishRequest(request: PublishRequest): Promise<PublishRequestValidation> {
+    async validatePublishRequest(
+        request: PublishRequest,
+    ): Promise<PublishRequestValidation> {
         const reasons: string[] = [];
         const warnings: string[] = [];
 
-        if (!request.targetId) reasons.push("An Instagram Professional account target ID is required.");
+        if (!request.targetId) {
+            reasons.push("An Instagram Professional account target ID is required.");
+        }
 
         const caption = buildCaption(request);
 
-        if (!caption) reasons.push("An Instagram caption is required.");
-        if (caption.length > 2200) reasons.push("The combined Instagram title and description cannot exceed 2200 characters.");
-        if (!request.metaConfirmPublic) warnings.push("A real Instagram publish requires metaConfirmPublic=true.");
-        if (!request.instagramShareToFeed) warnings.push("The Reel will not be shared to the main Instagram feed.");
+        if (!caption) {
+            reasons.push("An Instagram caption is required.");
+        }
+
+        if (caption.length > 2200) {
+            reasons.push(
+                "The combined Instagram title and description cannot exceed 2200 characters.",
+            );
+        }
+
+        if (!request.metaConfirmPublic) {
+            warnings.push("A real Instagram publish requires metaConfirmPublic=true.");
+        }
+
+        if (!request.instagramShareToFeed) {
+            warnings.push("The Reel will not be shared to the main Instagram feed.");
+        }
 
         warnings.push("YouTube privacyStatus does not make an Instagram Reel private.");
 
         return { ok: reasons.length === 0, reasons, warnings };
     }
 
-    async publish(request: PublishRequest, dryRun: boolean): Promise<PlatformPublishResult> {
+    async publish(
+        request: PublishRequest,
+        dryRun: boolean,
+    ): Promise<PlatformPublishResult> {
         const validation = await this.validatePublishRequest(request);
 
         if (!validation.ok) {
@@ -185,14 +245,22 @@ export class InstagramPublisher implements PlatformPublisher {
                 },
             );
 
-            console.error(JSON.stringify({
+            let uploadHost: string | undefined;
+
+            try {
+                uploadHost = container.uri ? new URL(container.uri).host : undefined;
+            } catch {
+                uploadHost = undefined;
+            }
+
+            logInstagramEvent({
                 step: "instagram_container_created",
                 containerId: container.id,
-                uploadUri: container.uri,
+                uploadHost,
                 fileName: request.video.fileName,
                 fileSize: request.video.sizeBytes,
                 mimeType: request.video.mimeType,
-            }));
+            });
 
             if (!container.id || !container.uri) {
                 return {
@@ -272,11 +340,11 @@ export class InstagramPublisher implements PlatformPublisher {
                         { fields: "id,status_code,status,video_status" } as Record<string, string>,
                     );
 
-                    console.error(JSON.stringify({
+                    logInstagramEvent({
                         step: "instagram_container_debug_status",
                         containerId: container.id,
                         debugStatus,
-                    }));
+                    });
                 } catch {
                     // Ignore debug fetch failure.
                 }
@@ -293,7 +361,10 @@ export class InstagramPublisher implements PlatformPublisher {
         }
     }
 
-    private async waitUntilReady(containerId: string, pageAccessToken: string): Promise<void> {
+    private async waitUntilReady(
+        containerId: string,
+        pageAccessToken: string,
+    ): Promise<void> {
         const deadline = Date.now() + this.processingTimeoutMs;
 
         while (Date.now() < deadline) {
@@ -303,15 +374,33 @@ export class InstagramPublisher implements PlatformPublisher {
                 { fields: "id,status_code,status" },
             );
 
-            if (status.status_code === "FINISHED" || status.status_code === "PUBLISHED") return;
+            if (!status.status_code) {
+                throw new Error(
+                    "Instagram container status response did not include status_code.",
+                );
+            }
 
-            if (status.status_code === "ERROR" || status.status_code === "EXPIRED") {
-                throw new Error(`Instagram container failed: ${status.status ?? status.status_code}`);
+            if (
+                status.status_code === "FINISHED"
+                || status.status_code === "PUBLISHED"
+            ) {
+                return;
+            }
+
+            if (
+                status.status_code === "ERROR"
+                || status.status_code === "EXPIRED"
+            ) {
+                throw new Error(
+                    `Instagram container failed: ${status.status ?? status.status_code}`,
+                );
             }
 
             await this.sleep(this.pollIntervalMs);
         }
 
-        throw new Error("Instagram media processing timed out before the container became publishable.");
+        throw new Error(
+            "Instagram media processing timed out before the container became publishable.",
+        );
     }
 }
