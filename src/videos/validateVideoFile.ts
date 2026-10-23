@@ -136,9 +136,13 @@ export async function validateVideoFile(
 
   const stat = await fs.stat(resolved.absolutePath);
 
+  if (stat.size === 0) {
+    throw new VideoValidationError("Video file is empty.");
+  }
+
   if (stat.size > input.maxVideoSizeBytes) {
     throw new VideoValidationError(
-      `Video exceeds maximum allowed size of ${input.maxVideoSizeBytes} bytes.`,
+      `Video exceeds the size limit of ${input.maxVideoSizeBytes} bytes.`,
     );
   }
 

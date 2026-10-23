@@ -55,7 +55,7 @@ function buildPublishers(): Record<PlatformName, PlatformPublisher> {
 
 function baseInput(overrides: Partial<PublishVideoInput> = {}): PublishVideoInput {
   return {
-    fileName: "clip.mp4",
+    filePath: "clip.mp4",
     platforms: ["youtube"],
     targetIds: {},
     title: "Test video",
@@ -193,7 +193,7 @@ describe("publishVideo", () => {
     const spy = vi.spyOn(publishers.youtube, "publish");
 
     await expect(
-      publishVideo(baseInput({ fileName: "../secret.mp4" }), config, publishers),
+      publishVideo(baseInput({ filePath: "../secret.mp4" }), config, publishers),
     ).rejects.toThrow();
 
     expect(spy).not.toHaveBeenCalled();
@@ -204,7 +204,7 @@ it("rejects real Meta publishing without public confirmation", async () => {
   await expect(
     publishVideo(
       {
-        fileName: "clip.mp4",
+        filePath: "clip.mp4",
         platforms: ["facebook"],
         targetIds: {
           facebook: "mock-page-id",

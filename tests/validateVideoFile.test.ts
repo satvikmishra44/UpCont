@@ -8,8 +8,8 @@ import { validateVideoFile, VideoValidationError } from "../src/videos/validateV
 let tempRoot: string;
 const limit = 10 * 1024 * 1024;
 
-function run(fileName: string, platforms: Array<"youtube" | "facebook" | "instagram"> = ["youtube"]) {
-  return validateVideoFile({ fileName, platforms, videoUploadRoot: tempRoot, maxVideoSizeBytes: limit });
+function run(filePath: string, platforms: Array<"youtube" | "facebook" | "instagram"> = ["youtube"]) {
+  return validateVideoFile({ filePath, platforms, videoUploadRoot: tempRoot, maxVideoSizeBytes: limit });
 }
 
 beforeAll(async () => {
@@ -33,19 +33,38 @@ describe("validateVideoFile", () => {
     expect(result.perPlatform).toHaveLength(2);
   });
 
-  it("adds the Instagram public-URL warning", async () => {
+  it("adds the Instagram local-upload warning", async () => {
     const result = await run("sample.mp4", ["instagram"]);
-    expect(result.perPlatform[0]?.warnings.join(" ")).toMatch(/public HTTPS/i);
+    const validation = result.perPlatform[0];
+
+    expect(validation?.platform).toBe("instagram");
+    expect(validation?.ok).toBe(true);
+    expect(validation?.warnings.join(" ")).toMatch(
+      /local file for upload/i,
+    );
   });
+
+  // it("adds the Instagram public-URL warning", async () => {
+  //   const result = await run("sample.mp4", ["instagram"]);
+  //   expect(result.perPlatform[0]?.warnings.join(" ")).toMatch(/public HTTPS/i);
+  // });
 
   it("rejects path traversal", async () => {
     await expect(run("../secret.mp4")).rejects.toBeInstanceOf(VideoValidationError);
   });
 
-  it("rejects absolute paths", async () => {
-    await expect(run(path.join(tempRoot, "sample.mp4"))).rejects.toBeInstanceOf(VideoValidationError);
-  });
+  it("accepts an absolute path and records its source type", async () => {
+    const absolutePath = path.join(tempRoot, "sample.mp4");
 
+    const result = await run(absolutePath);
+
+    expect(result.ok).toBe(true);
+    expect(result.video.absolutePath).toBe(path.resolve(absolutePath));
+    expect(result.video.fileName).toBe("sample.mp4");
+    expect(result.video.sizeBytes).toBe(1024);
+    expect(result.video.sourceType).toBe("absolute_path");
+  });
+              
   it("rejects unsupported extensions", async () => {
     await expect(run("bad.txt")).rejects.toBeInstanceOf(VideoValidationError);
   });
@@ -61,7 +80,7 @@ describe("validateVideoFile", () => {
   it("rejects a file above the size limit", async () => {
     await expect(
       validateVideoFile({
-        fileName: "sample.mp4",
+        filePath: "sample.mp4",
         platforms: ["youtube"],
         videoUploadRoot: tempRoot,
         maxVideoSizeBytes: 10,
