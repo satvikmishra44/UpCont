@@ -18,6 +18,8 @@ import {logger} from "./logger.js";
 import {MetaAssetService} from "./meta/MetaAssetService.js";
 import {MetaAuthService} from "./meta/MetaAuthService.js";
 import {MetaGraphClient} from "./meta/MetaGraphClient.js";
+import { PublishConfirmationStore } from "./security/PublishConfirmationStore.js";
+import { ListLocalVideosInputSchema, listLocalVideos } from "./tools/listLocalVideos.js";
 import {GetPlatformConnectionStatusInputSchema, getPlatformConnectionStatus} from "./tools/getPlatformConnectionStatus.js";
 import {ListPublishTargetsInputSchema, listPublishTargets} from "./tools/listPublishTargets.js";
 import {OpenOAuthSetupInstructionsInputSchema, openOAuthSetupInstructions} from "./tools/openOAuthSetupInstructions.js";
@@ -51,6 +53,8 @@ function failureResult(error: unknown) {
 
 function createServer(): McpServer {
   const config = loadConfig();
+
+  const publishConfirmations = new PublishConfirmationStore();
 
   if ((config.facebookMode === "real" || config.instagramMode === "real") && (!config.meta.appId || !config.meta.appSecret)) {
     throw new Error("Real Facebook or Instagram mode requires META_APP_ID and META_APP_SECRET.");
@@ -135,6 +139,19 @@ function createServer(): McpServer {
 
       try {
         return successResult(await youtubeAuth.disconnect(revokeRemote));
+      } catch (error) {
+        return failureResult(error);
+      }
+    },
+  );
+
+  server.registerTool("list_local_videos", {
+      title: "List Approved Local Videos",
+      description: "Lists video files inside the approved VIDEO_UPLOAD_ROOT, newest first. Use this when the user says 'this video', 'latest video', or does not provide an exact filename.",
+      inputSchema: ListLocalVideosInputSchema,
+    }, async (input) => {
+      try {
+        return successResult(await listLocalVideos(input, config.videoUploadRoot));
       } catch (error) {
         return failureResult(error);
       }
@@ -254,17 +271,32 @@ function createServer(): McpServer {
   );
 
   server.registerTool("publish_video", {
-      title: "Publish Video",
-      description: "Validates and sequentially publishes a local video to selected platforms.",
-      inputSchema: PublishVideoInputSchema,
-    }, async (input) => {
-      try {
-        return successResult(
-          await publishVideo(input, config, publishers));
-      } catch (error) {
-        return failureResult(error);
-      }
-    },
+          title: "Dry Run or Publish Video",
+          description: "Two-step publishing tool. First call with dryRun=true using the complete final request. A successful dry run returns confirmation.token. Then call again with the exact same request, dryRun=false, confirmPublish=true, and confirmationToken set to that token. For Facebook or Instagram, metaConfirmPublic must already be true in both calls.",
+          inputSchema: PublishVideoInputSchema,
+      }, async (input) => {
+          try {
+              if (input.dryRun) {
+                  const result = await publishVideo(input, config, publishers);
+
+                  const allReady = result.results.length === input.platforms.length && result.results.every((item) => item.status === "dry_run");
+
+                  if (!allReady) return successResult(result);
+
+                  const confirmation = publishConfirmations.issue(input);
+
+                  return successResult({
+                      ...result,
+                      confirmation,
+                      nextStep: "Repeat the exact same request with dryRun=false, confirmPublish=true, and confirmationToken set to confirmation.token.",
+                  });
+              }
+              publishConfirmations.consume(input.confirmationToken, input);
+              return successResult(await publishVideo(input, config, publishers));
+          } catch (error) {
+              return failureResult(error);
+          }
+      },
   );
 
   server.registerTool(
