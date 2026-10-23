@@ -14,12 +14,13 @@ export const PublishVideoInputSchema = z.object({
     privacyStatus: z.enum(["private", "unlisted", "public"]).default("private"),
     tags: z.array(z.string().min(1)).max(30).default([]),
     categoryId: z.string().default("22"),
-    madeForKids: z.boolean(),
+    madeForKids: z.boolean().default(false),
     notifySubscribers: z.boolean().default(false),
     metaConfirmPublic: z.boolean().default(false),
     instagramShareToFeed: z.boolean().default(true),
     dryRun: z.boolean().default(true),
     confirmPublish: z.boolean().default(false),
+    confirmationToken: z.string().min(20).optional()
 });
 
 export type PublishVideoInput = z.infer<typeof PublishVideoInputSchema>;
@@ -86,7 +87,7 @@ export async function publishVideo(input: PublishVideoInput, config: AppConfig, 
 
       tags: input.tags,
       categoryId: input.categoryId,
-      madeForKids: input.madeForKids || false,
+      madeForKids: input.madeForKids,
       notifySubscribers: input.notifySubscribers,
 
       metaConfirmPublic: input.metaConfirmPublic,
